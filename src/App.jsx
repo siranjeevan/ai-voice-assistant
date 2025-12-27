@@ -1,0 +1,348 @@
+import { useState, useRef, useEffect, useCallback } from 'react';
+import './App.css';
+
+// Backend API URL
+const API_URL = 'http://localhost:3001';
+
+// Check for browser support
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const speechSynthesis = window.speechSynthesis;
+
+function App() {
+  // State
+  const [status, setStatus] = useState('idle'); // idle, listening, processing, speaking, error
+  const [transcript, setTranscript] = useState('');
+  const [response, setResponse] = useState('');
+  const [error, setError] = useState('');
+
+  // Refs
+  const recognitionRef = useRef(null);
+  const synthRef = useRef(null);
+
+  // Check browser support
+  const isSupported = SpeechRecognition && speechSynthesis;
+
+  // Initialize speech recognition
+  useEffect(() => {
+    if (!SpeechRecognition) return;
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => {
+      setStatus('listening');
+      setError('');
+    };
+
+    recognition.onresult = (event) => {
+      let interimTranscript = '';
+      let finalTranscript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          finalTranscript += result[0].transcript;
+        } else {
+          interimTranscript += result[0].transcript;
+        }
+      }
+
+      const currentText = finalTranscript || interimTranscript;
+      setTranscript(currentText);
+      // Store in ref so onend can access it
+      if (recognitionRef.current) {
+        recognitionRef.current.lastTranscript = currentText;
+      }
+    };
+
+    recognition.onend = () => {
+      // Only process if we should and have a transcript
+      if (recognitionRef.current?.shouldProcess) {
+        recognitionRef.current.shouldProcess = false;
+        const currentTranscript = recognitionRef.current.lastTranscript;
+        if (currentTranscript && currentTranscript.trim()) {
+          sendToBackend(currentTranscript);
+        } else {
+          setStatus('idle');
+          setResponse('I did not hear anything. Please try again.');
+        }
+      } else {
+        setStatus('idle');
+      }
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+
+      let errorMessage = 'An error occurred with speech recognition.';
+
+      switch (event.error) {
+        case 'no-speech':
+          errorMessage = 'No speech was detected. Please try again.';
+          setResponse('I did not hear anything. Please try again.');
+          break;
+        case 'audio-capture':
+          errorMessage = 'No microphone was found. Please check your microphone.';
+          break;
+        case 'not-allowed':
+          errorMessage = 'Microphone access was denied. Please allow microphone access and try again.';
+          break;
+        case 'aborted':
+          // User aborted, no error to show
+          setStatus('idle');
+          return;
+        default:
+          errorMessage = `Error: ${event.error}`;
+      }
+
+      setError(errorMessage);
+      setStatus('error');
+    };
+
+    recognitionRef.current = recognition;
+    recognitionRef.current.shouldProcess = false;
+    recognitionRef.current.lastTranscript = '';
+
+    // Cleanup
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.abort();
+      }
+    };
+  }, []);
+
+  // Send transcript to backend
+  const sendToBackend = useCallback(async (text) => {
+    setStatus('processing');
+
+    try {
+      const res = await fetch(`${API_URL}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message: text }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Server error: ${res.status}`);
+      }
+
+      const data = await res.json();
+      const reply = data.reply || 'Sorry, I could not generate a response.';
+
+      setResponse(reply);
+      speakResponse(reply);
+
+    } catch (err) {
+      console.error('API Error:', err);
+      setError('Could not connect to the server. Please make sure the backend is running.');
+      setStatus('error');
+    }
+  }, []);
+
+  // Speak the response using SpeechSynthesis
+  const speakResponse = useCallback((text) => {
+    if (!speechSynthesis) return;
+
+    // Cancel any ongoing speech
+    speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+
+    // Try to use a good voice
+    const voices = speechSynthesis.getVoices();
+    const preferredVoice = voices.find(v =>
+      v.name.includes('Google') ||
+      v.name.includes('Samantha') ||
+      v.name.includes('Daniel') ||
+      v.lang.startsWith('en')
+    );
+
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+    }
+
+    utterance.onstart = () => {
+      setStatus('speaking');
+    };
+
+    utterance.onend = () => {
+      setStatus('idle');
+    };
+
+    utterance.onerror = (event) => {
+      console.error('Speech synthesis error:', event);
+      setStatus('idle');
+    };
+
+    synthRef.current = utterance;
+    speechSynthesis.speak(utterance);
+  }, []);
+
+  // Start listening
+  const startListening = useCallback(() => {
+    if (!recognitionRef.current) return;
+
+    // Cancel any ongoing speech
+    speechSynthesis?.cancel();
+
+    // Reset state
+    setTranscript('');
+    setError('');
+    setResponse('');
+
+    // Set up to process when speech ends
+    recognitionRef.current.shouldProcess = true;
+
+    try {
+      recognitionRef.current.start();
+    } catch (err) {
+      console.error('Failed to start recognition:', err);
+      setError('Failed to start speech recognition. Please try again.');
+      setStatus('error');
+    }
+  }, []);
+
+  // Stop listening
+  const stopListening = useCallback(() => {
+    if (!recognitionRef.current) return;
+
+    // Save the current transcript before stopping
+    recognitionRef.current.lastTranscript = transcript;
+    recognitionRef.current.stop();
+  }, [transcript]);
+
+  // Handle mic button click
+  const handleMicClick = useCallback(() => {
+    if (status === 'listening') {
+      stopListening();
+    } else if (status === 'idle' || status === 'error') {
+      startListening();
+    }
+  }, [status, startListening, stopListening]);
+
+  // Get status text
+  const getStatusText = () => {
+    switch (status) {
+      case 'listening':
+        return 'Listening...';
+      case 'processing':
+        return 'Thinking...';
+      case 'speaking':
+        return 'Speaking...';
+      case 'error':
+        return 'Error occurred';
+      default:
+        return 'Ready';
+    }
+  };
+
+  // Render browser not supported message
+  if (!isSupported) {
+    return (
+      <div className="voice-assistant">
+        <div className="browser-warning">
+          <h2>Browser Not Supported</h2>
+          <p>
+            Your browser does not support the Web Speech API.
+            Please use Google Chrome, Microsoft Edge, or Safari for the best experience.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="voice-assistant">
+      <header className="assistant-header">
+        <h1>Voice Assistant</h1>
+        <p>Tap the microphone and start speaking</p>
+      </header>
+
+      <div className="assistant-card">
+        {/* Status Indicator */}
+        <div className={`status-indicator ${status}`}>
+          <span className="status-dot" />
+          <span>{getStatusText()}</span>
+        </div>
+
+        {/* Microphone Button */}
+        <div className="mic-container">
+          <button
+            className={`mic-button ${status === 'listening' ? 'listening' : ''}`}
+            onClick={handleMicClick}
+            disabled={status === 'processing' || status === 'speaking'}
+            aria-label={status === 'listening' ? 'Stop listening' : 'Start listening'}
+          >
+            <MicrophoneIcon className="mic-icon" />
+          </button>
+        </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="error-message">
+            <p>⚠️ {error}</p>
+          </div>
+        )}
+
+        {/* User Transcript */}
+        <div className="transcript-section">
+          <div className="transcript-label">You said:</div>
+          <div className="transcript-box">
+            {transcript ? (
+              <p>{transcript}</p>
+            ) : (
+              <p className="placeholder">Your speech will appear here...</p>
+            )}
+          </div>
+        </div>
+
+        {/* AI Response */}
+        <div className="response-section">
+          <div className="transcript-label">Assistant:</div>
+          <div className="response-box">
+            {status === 'processing' ? (
+              <div className="loading-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            ) : response ? (
+              <p>{response}</p>
+            ) : (
+              <p className="placeholder">Response will appear here...</p>
+            )}
+          </div>
+        </div>
+
+        {/* Instructions */}
+        <div className="instructions">
+          <p>Click the microphone button, speak your question, then click again to send.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Microphone Icon Component
+function MicrophoneIcon({ className }) {
+  return (
+    <svg
+      className={className}
+      fill="currentColor"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
+      <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+    </svg>
+  );
+}
+
+export default App;
