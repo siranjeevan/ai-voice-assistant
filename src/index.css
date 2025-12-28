@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 :root {
     --bg-primary: #0f1419;
     --bg-secondary: #151d25;
@@ -44,10 +46,16 @@ body {
     align-items: center;
     justify-content: center;
     min-height: 100vh;
-    background:
-        radial-gradient(ellipse at top, rgba(20, 184, 166, 0.15) 0%, transparent 50%),
-        radial-gradient(ellipse at bottom right, rgba(6, 182, 212, 0.1) 0%, transparent 50%),
-        var(--bg-primary);
+    position: relative;
 }
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+/* Orb Background */
+.orb-background {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 0;
+    pointer-events: none;
+}

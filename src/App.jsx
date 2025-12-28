@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import './App.css';
+import Orb from './components/Orb/Orb';
 
 // Backend API URL
 const API_URL = 'http://localhost:3001';
@@ -259,74 +260,71 @@ function App() {
   }
 
   return (
-    <div className="voice-assistant">
-      <header className="assistant-header">
-        <h1>Voice Assistant</h1>
-        <p>Tap the microphone and start speaking</p>
-      </header>
+    <>
+      {/* Orb Background - Main Focus */}
+      <div className="orb-background">
+        <Orb
+          hue={status === 'listening' ? 120 : status === 'speaking' ? 200 : status === 'processing' ? 40 : 0}
+          hoverIntensity={status === 'listening' || status === 'speaking' ? 0.8 : status === 'processing' ? 0.5 : 0.2}
+          rotateOnHover={true}
+          forceHoverState={status === 'listening' || status === 'processing' || status === 'speaking'}
+          backgroundColor="#0f1419"
+        />
+      </div>
 
-      <div className="assistant-card">
-        {/* Status Indicator */}
-        <div className={`status-indicator ${status}`}>
+      {/* Minimal Header */}
+      <header className="floating-header">
+        <div className={`status-pill ${status}`}>
           <span className="status-dot" />
           <span>{getStatusText()}</span>
         </div>
+      </header>
 
-        {/* Microphone Button */}
-        <div className="mic-container">
-          <button
-            className={`mic-button ${status === 'listening' ? 'listening' : ''}`}
-            onClick={handleMicClick}
-            disabled={status === 'processing' || status === 'speaking'}
-            aria-label={status === 'listening' ? 'Stop listening' : 'Start listening'}
-          >
-            <MicrophoneIcon className="mic-icon" />
-          </button>
-        </div>
+      {/* Bottom Control Bar */}
+      <div className="bottom-bar">
+        {/* Text Section - Left */}
+        <div className="text-panel">
+          {error && (
+            <div className="error-toast">
+              <span>⚠️</span>
+              <p>{error}</p>
+            </div>
+          )}
 
-        {/* Error Message */}
-        {error && (
-          <div className="error-message">
-            <p>⚠️ {error}</p>
+          <div className="conversation-bubble user-bubble">
+            <span className="bubble-label">You</span>
+            <p>{transcript || 'Tap mic and speak...'}</p>
           </div>
-        )}
 
-        {/* User Transcript */}
-        <div className="transcript-section">
-          <div className="transcript-label">You said:</div>
-          <div className="transcript-box">
-            {transcript ? (
-              <p>{transcript}</p>
-            ) : (
-              <p className="placeholder">Your speech will appear here...</p>
-            )}
-          </div>
-        </div>
-
-        {/* AI Response */}
-        <div className="response-section">
-          <div className="transcript-label">Assistant:</div>
-          <div className="response-box">
+          <div className="conversation-bubble ai-bubble">
+            <span className="bubble-label">AI</span>
             {status === 'processing' ? (
               <div className="loading-dots">
                 <span></span>
                 <span></span>
                 <span></span>
               </div>
-            ) : response ? (
-              <p>{response}</p>
             ) : (
-              <p className="placeholder">Response will appear here...</p>
+              <p>{response || 'Waiting for your question...'}</p>
             )}
           </div>
         </div>
 
-        {/* Instructions */}
-        <div className="instructions">
-          <p>Click the microphone button, speak your question, then click again to send.</p>
+        {/* Mic Button - Right */}
+        <div className="mic-section">
+          <button
+            className={`mic-fab ${status === 'listening' ? 'listening' : ''} ${status === 'processing' || status === 'speaking' ? 'disabled' : ''}`}
+            onClick={handleMicClick}
+            disabled={status === 'processing' || status === 'speaking'}
+            aria-label={status === 'listening' ? 'Stop listening' : 'Start listening'}
+          >
+            <MicrophoneIcon className="mic-icon" />
+            {status === 'listening' && <div className="mic-ripple" />}
+            {status === 'listening' && <div className="mic-ripple delay" />}
+          </button>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
