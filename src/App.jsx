@@ -114,32 +114,33 @@ function App() {
     };
   }, []);
 
-  // Send transcript to backend
+  // Send transcript to backend (MOCK VERSION - NO SERVER NEEDED)
   const sendToBackend = useCallback(async (text) => {
     setStatus('processing');
 
     try {
-      const res = await fetch(`${API_URL}/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ message: text }),
-      });
-
-      if (!res.ok) {
-        throw new Error(`Server error: ${res.status}`);
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Mock AI responses based on input
+      let reply = 'I heard you say: ' + text;
+      
+      if (text.toLowerCase().includes('hello')) {
+        reply = 'Hello! How can I help you today?';
+      } else if (text.toLowerCase().includes('weather')) {
+        reply = 'I cannot check the weather without a server connection, but it looks nice outside!';
+      } else if (text.toLowerCase().includes('time')) {
+        reply = 'The current time is ' + new Date().toLocaleTimeString();
+      } else {
+        reply = 'That is interesting. I would need a server connection to give you a proper AI response.';
       }
-
-      const data = await res.json();
-      const reply = data.reply || 'Sorry, I could not generate a response.';
 
       setResponse(reply);
       speakResponse(reply);
 
     } catch (err) {
-      console.error('API Error:', err);
-      setError('Could not connect to the server. Please make sure the backend is running.');
+      console.error('Mock Error:', err);
+      setError('Something went wrong with the mock response.');
       setStatus('error');
     }
   }, []);
