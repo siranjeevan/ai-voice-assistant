@@ -1,7 +1,11 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Google Apps Script API endpoint that provides multiple Gemini API keys
-const API_KEYS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyI1Rlusken3zIQfY4Ce25zqu5_RJeHzqwzUt9_0E0pxTq5ezvZb0jclk9tPj7qK_I/exec';
+const API_KEYS_ENDPOINT = import.meta.env.VITE_API_KEYS_ENDPOINT;
+
+if (!API_KEYS_ENDPOINT) {
+  throw new Error('VITE_API_KEYS_ENDPOINT environment variable is required');
+}
 
 // Cache for API keys to avoid fetching repeatedly
 let cachedApiKeys = null;
@@ -157,10 +161,4 @@ export async function getRealGeminiResponse(userMessage) {
     
     throw new Error('Failed to get AI response. Please try again.');
   }
-}
-
-// Function to manually refresh API keys cache
-export function refreshApiKeys() {
-  cachedApiKeys = null;
-  lastFetchTime = 0;
 }

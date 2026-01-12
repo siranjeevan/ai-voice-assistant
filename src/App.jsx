@@ -1,10 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import './App.css';
 import Orb from './components/Orb/Orb';
-import { getRealGeminiResponse, refreshApiKeys } from './real-gemini-ai.js';
-
-// Backend API URL
-const API_URL = 'http://localhost:3001';
+import { getRealGeminiResponse } from './real-gemini-ai.js';
 
 // Check for browser support
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -23,6 +20,66 @@ function App() {
 
   // Check browser support
   const isSupported = SpeechRecognition && speechSynthesis;
+
+  // Speak the response using SpeechSynthesis
+  const speakResponse = useCallback((text) => {
+    if (!speechSynthesis) return;
+
+    // Cancel any ongoing speech
+    speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+
+    // Try to use a good voice
+    const voices = speechSynthesis.getVoices();
+    const preferredVoice = voices.find(v =>
+      v.name.includes('Google') ||
+      v.name.includes('Samantha') ||
+      v.name.includes('Daniel') ||
+      v.lang.startsWith('en')
+    );
+
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+    }
+
+    utterance.onstart = () => {
+      setStatus('speaking');
+    };
+
+    utterance.onend = () => {
+      setStatus('idle');
+    };
+
+    utterance.onerror = (event) => {
+      console.error('Speech synthesis error:', event);
+      setStatus('idle');
+    };
+
+    synthRef.current = utterance;
+    speechSynthesis.speak(utterance);
+  }, []);
+
+  // Send transcript to REAL Gemini AI
+  const sendToBackend = useCallback(async (text) => {
+    setStatus('processing');
+
+    try {
+      // Get real AI response from Gemini
+      const reply = await getRealGeminiResponse(text);
+
+      setResponse(reply);
+      speakResponse(reply);
+
+    } catch (err) {
+      console.error('Gemini AI Error:', err);
+      setError(err.message || 'Failed to get AI response. Please try again.');
+      setStatus('error');
+    }
+  }, [speakResponse]);
 
   // Initialize speech recognition
   useEffect(() => {
@@ -113,67 +170,7 @@ function App() {
         recognitionRef.current.abort();
       }
     };
-  }, []);
-
-  // Speak the response using SpeechSynthesis
-  const speakResponse = useCallback((text) => {
-    if (!speechSynthesis) return;
-
-    // Cancel any ongoing speech
-    speechSynthesis.cancel();
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
-
-    // Try to use a good voice
-    const voices = speechSynthesis.getVoices();
-    const preferredVoice = voices.find(v =>
-      v.name.includes('Google') ||
-      v.name.includes('Samantha') ||
-      v.name.includes('Daniel') ||
-      v.lang.startsWith('en')
-    );
-
-    if (preferredVoice) {
-      utterance.voice = preferredVoice;
-    }
-
-    utterance.onstart = () => {
-      setStatus('speaking');
-    };
-
-    utterance.onend = () => {
-      setStatus('idle');
-    };
-
-    utterance.onerror = (event) => {
-      console.error('Speech synthesis error:', event);
-      setStatus('idle');
-    };
-
-    synthRef.current = utterance;
-    speechSynthesis.speak(utterance);
-  }, []);
-
-  // Send transcript to REAL Gemini AI
-  const sendToBackend = useCallback(async (text) => {
-    setStatus('processing');
-
-    try {
-      // Get real AI response from Gemini
-      const reply = await getRealGeminiResponse(text);
-
-      setResponse(reply);
-      speakResponse(reply);
-
-    } catch (err) {
-      console.error('Gemini AI Error:', err);
-      setError(err.message || 'Failed to get AI response. Please try again.');
-      setStatus('error');
-    }
-  }, [speakResponse]);
+  }, [sendToBackend]);
 
   // Start listening
   const startListening = useCallback(() => {
@@ -266,9 +263,6 @@ function App() {
         <div className={`status-pill ${status}`}>
           <span className="status-dot" />
           <span>{getStatusText()}</span>
-        </div>
-        <div className="demo-badge">
-          <span>🔑 Multi-Key Gemini AI</span>
         </div>
       </header>
 

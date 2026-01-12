@@ -15,19 +15,6 @@
   gap: 0.5rem;
 }
 
-.demo-badge {
-  padding: 0.4rem 0.8rem;
-  background: rgba(255, 193, 7, 0.15);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-radius: 100px;
-  border: 1px solid rgba(255, 193, 7, 0.3);
-  font-size: 0.75rem;
-  color: #ffc107;
-  box-shadow: 0 4px 16px rgba(255, 193, 7, 0.2);
-  animation: fadeIn 0.5s ease-out;
-}
-
 @keyframes fadeIn {
   from {
     opacity: 0;
