@@ -1,15 +1,19 @@
 {
   "name": "ai-voice-assistant",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "description": "Secure AI Voice Assistant with Multi-Key Gemini Integration",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "npm run dev",
+    "check-config": "node scripts/check-config.js"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "ogl": "^1.0.11",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
@@ -27,5 +31,15 @@
   },
   "overrides": {
     "vite": "npm:rolldown-vite@7.2.5"
-  }
+  },
+  "keywords": [
+    "ai",
+    "voice-assistant",
+    "gemini",
+    "react",
+    "webgl",
+    "speech-recognition"
+  ],
+  "author": "AI Voice Assistant",
+  "license": "MIT"
 }

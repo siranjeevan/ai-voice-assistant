@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import './App.css';
 import Orb from './components/Orb/Orb';
+import { getRealGeminiResponse, refreshApiKeys } from './real-gemini-ai.js';
 
 // Backend API URL
 const API_URL = 'http://localhost:3001';
@@ -114,37 +115,6 @@ function App() {
     };
   }, []);
 
-  // Send transcript to backend (MOCK VERSION - NO SERVER NEEDED)
-  const sendToBackend = useCallback(async (text) => {
-    setStatus('processing');
-
-    try {
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Mock AI responses based on input
-      let reply = 'I heard you say: ' + text;
-      
-      if (text.toLowerCase().includes('hello')) {
-        reply = 'Hello! How can I help you today?';
-      } else if (text.toLowerCase().includes('weather')) {
-        reply = 'I cannot check the weather without a server connection, but it looks nice outside!';
-      } else if (text.toLowerCase().includes('time')) {
-        reply = 'The current time is ' + new Date().toLocaleTimeString();
-      } else {
-        reply = 'That is interesting. I would need a server connection to give you a proper AI response.';
-      }
-
-      setResponse(reply);
-      speakResponse(reply);
-
-    } catch (err) {
-      console.error('Mock Error:', err);
-      setError('Something went wrong with the mock response.');
-      setStatus('error');
-    }
-  }, []);
-
   // Speak the response using SpeechSynthesis
   const speakResponse = useCallback((text) => {
     if (!speechSynthesis) return;
@@ -186,6 +156,24 @@ function App() {
     synthRef.current = utterance;
     speechSynthesis.speak(utterance);
   }, []);
+
+  // Send transcript to REAL Gemini AI
+  const sendToBackend = useCallback(async (text) => {
+    setStatus('processing');
+
+    try {
+      // Get real AI response from Gemini
+      const reply = await getRealGeminiResponse(text);
+
+      setResponse(reply);
+      speakResponse(reply);
+
+    } catch (err) {
+      console.error('Gemini AI Error:', err);
+      setError(err.message || 'Failed to get AI response. Please try again.');
+      setStatus('error');
+    }
+  }, [speakResponse]);
 
   // Start listening
   const startListening = useCallback(() => {
@@ -278,6 +266,9 @@ function App() {
         <div className={`status-pill ${status}`}>
           <span className="status-dot" />
           <span>{getStatusText()}</span>
+        </div>
+        <div className="demo-badge">
+          <span>🔒 Secure AI Assistant</span>
         </div>
       </header>
 
