@@ -268,7 +268,7 @@ function App() {
           <span>{getStatusText()}</span>
         </div>
         <div className="demo-badge">
-          <span>🔒 Secure AI Assistant</span>
+          <span>🔑 Multi-Key Gemini AI</span>
         </div>
       </header>
 

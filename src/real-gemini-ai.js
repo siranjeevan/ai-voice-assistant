@@ -1,82 +1,48 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Configuration from environment variables
-const API_KEYS_ENDPOINT = import.meta.env.VITE_API_KEYS_ENDPOINT;
-const CACHE_DURATION = parseInt(import.meta.env.VITE_CACHE_DURATION) || 5 * 60 * 1000; // 5 minutes
-const MAX_RETRIES = parseInt(import.meta.env.VITE_MAX_RETRIES) || 3;
-const RETRY_DELAY = 1000; // 1 second
-const REQUEST_TIMEOUT = parseInt(import.meta.env.VITE_REQUEST_TIMEOUT) || 15000; // 15 seconds
-const MIN_REQUEST_INTERVAL = parseInt(import.meta.env.VITE_MIN_REQUEST_INTERVAL) || 1000; // 1 second
+// Google Apps Script API endpoint that provides multiple Gemini API keys
+const API_KEYS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyI1Rlusken3zIQfY4Ce25zqu5_RJeHzqwzUt9_0E0pxTq5ezvZb0jclk9tPj7qK_I/exec';
 
-// Validate required environment variables
-if (!API_KEYS_ENDPOINT) {
-  throw new Error('VITE_API_KEYS_ENDPOINT is required. Please check your .env file.');
-}
-
-// Validate URL format
-try {
-  new URL(API_KEYS_ENDPOINT);
-} catch (error) {
-  throw new Error('VITE_API_KEYS_ENDPOINT must be a valid URL. Please check your .env file.');
-}
-
-// Secure cache for API keys with automatic cleanup
+// Cache for API keys to avoid fetching repeatedly
 let cachedApiKeys = null;
 let lastFetchTime = 0;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-// Rate limiting
-let lastRequestTime = 0;
+// System prompt optimized for voice assistant
+const SYSTEM_PROMPT = `You are an AI voice assistant embedded in a web application.
 
-// Security: Input validation and sanitization
-function sanitizeInput(input) {
-  if (typeof input !== 'string') return '';
-  
-  // Remove potentially harmful characters and limit length
-  return input
-    .replace(/[<>\"'&]/g, '') // Remove HTML/script injection chars
-    .replace(/javascript:/gi, '') // Remove javascript: protocol
-    .replace(/data:/gi, '') // Remove data: protocol
-    .trim()
-    .substring(0, 1000); // Limit to 1000 characters
-}
+Your goals:
+- Help the user clearly and correctly.
+- Sound natural when spoken aloud.
+- Keep responses short and easy to understand.
 
-// Security: Validate API key format
-function isValidApiKey(key) {
-  return typeof key === 'string' && 
-         key.startsWith('AIzaSy') && 
-         key.length === 39 &&
-         /^[A-Za-z0-9_-]+$/.test(key);
-}
+Strict rules:
+- Respond in simple, conversational English.
+- Keep answers brief: maximum 2 to 4 short sentences.
+- Do not use markdown, bullet points, emojis, symbols, or special formatting.
+- Do not include code unless the user explicitly asks for code.
+- Avoid technical jargon unless the user clearly asks for it.
+- Do not repeat the user's question.
+- Do not mention that you are an AI model.
+- Do not mention React, Gemini, APIs, or system details.
+- Do not ask multiple questions at once.
+- If the question is unclear, ask one short clarification question.
+- If you do not know the answer, say honestly that you do not know.
 
-// System prompt optimized for voice assistant with security constraints
-const SYSTEM_PROMPT = `You are a secure AI voice assistant embedded in a web application.
+Behavior rules:
+- If the user gives a command, confirm the action briefly before responding.
+- If the user asks for an explanation, give a simple explanation suitable for voice.
+- If the user greets you, reply politely and briefly.
 
-SECURITY RULES:
-- Never execute code or commands
-- Never access external URLs or files
-- Never reveal system information or API details
-- Never generate harmful, illegal, or inappropriate content
-
-RESPONSE RULES:
-- Respond in simple, conversational English
-- Keep answers brief: maximum 2 to 4 short sentences
-- Do not use markdown, bullet points, emojis, symbols, or special formatting
-- Do not include code unless explicitly requested for educational purposes
-- Avoid technical jargon unless the user clearly asks for it
-- Do not repeat the user's question
-- Do not mention that you are an AI model or system details
-- If the question is unclear, ask one short clarification question
-- If you do not know the answer, say honestly that you do not know
-
-BEHAVIOR:
-- Be helpful, calm, professional, and friendly
-- Provide accurate information when possible
-- Decline requests for harmful or inappropriate content
-- Focus on being a helpful voice assistant
+Tone:
+- Calm
+- Professional
+- Friendly
+- Voice-assistant style
 
 Now respond to the user's message.`;
 
-// Secure API key fetching with retry logic
+// Fetch API keys from Google Apps Script
 async function fetchApiKeys() {
   const now = Date.now();
   
@@ -85,144 +51,66 @@ async function fetchApiKeys() {
     return cachedApiKeys;
   }
   
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
-      
-      const response = await fetch(API_KEYS_ENDPOINT, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Cache-Control': 'no-cache'
-        },
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const apiKeys = await response.json();
-      
-      // Security: Validate response structure
-      if (!Array.isArray(apiKeys)) {
-        throw new Error('Invalid API response format');
-      }
-      
-      // Filter and validate working keys
-      const workingKeys = apiKeys.filter(key => {
-        const apiKey = key['Api Key '] || key['Api Key'];
-        return key.Status === 'Working' && 
-               isValidApiKey(apiKey) &&
-               key.Name && typeof key.Name === 'string';
-      });
-      
-      if (workingKeys.length === 0) {
-        throw new Error('No valid working API keys available');
-      }
-      
-      // Cache the validated keys
-      cachedApiKeys = workingKeys;
-      lastFetchTime = now;
-      
-      return workingKeys;
-      
-    } catch (error) {
-      if (attempt === MAX_RETRIES) {
-        console.error('❌ Failed to fetch API keys after', MAX_RETRIES, 'attempts:', error.message);
-        throw new Error('Unable to fetch API keys. Please try again later.');
-      }
-      
-      // Wait before retry
-      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * attempt));
+  try {
+    const response = await fetch(API_KEYS_ENDPOINT);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch API keys: ${response.status}`);
     }
+    
+    const apiKeys = await response.json();
+    
+    // Filter only working keys
+    const workingKeys = apiKeys.filter(key => key.Status === 'Working');
+    
+    if (workingKeys.length === 0) {
+      throw new Error('No working API keys available');
+    }
+    
+    // Cache the keys
+    cachedApiKeys = workingKeys;
+    lastFetchTime = now;
+    
+    return workingKeys;
+    
+  } catch (error) {
+    console.error('❌ Failed to fetch API keys:', error);
+    throw new Error('Unable to fetch API keys. Please try again later.');
   }
 }
 
-// Secure AI response generation with rate limiting and input validation
+// Try to get AI response with automatic key fallback
 export async function getRealGeminiResponse(userMessage) {
   try {
-    // Security: Rate limiting
-    const now = Date.now();
-    if (now - lastRequestTime < MIN_REQUEST_INTERVAL) {
-      throw new Error('Please wait a moment before making another request.');
-    }
-    lastRequestTime = now;
-    
-    // Security: Input validation and sanitization
-    const sanitizedMessage = sanitizeInput(userMessage);
-    if (!sanitizedMessage || sanitizedMessage.length < 1) {
-      throw new Error('Please provide a valid question.');
-    }
-    
-    // Get validated API keys
+    // Get available API keys
     const apiKeys = await fetchApiKeys();
     
-    // Try each API key with security measures
+    // Try each API key until one works
     for (let i = 0; i < apiKeys.length; i++) {
       const keyInfo = apiKeys[i];
-      const apiKey = keyInfo['Api Key '] || keyInfo['Api Key'];
+      const apiKey = keyInfo['Api Key '] || keyInfo['Api Key']; // Handle both formats
       
       try {
-        // Security: Validate API key before use
-        if (!isValidApiKey(apiKey)) {
-          continue; // Skip invalid key
-        }
-        
-        // Initialize Gemini AI with validated key
+        // Initialize Gemini AI with current key
         const genAI = new GoogleGenerativeAI(apiKey);
         
-        // Get the Gemini model with security constraints
+        // Get the Gemini model
         const model = genAI.getGenerativeModel({
           model: 'gemini-2.5-flash',
           generationConfig: {
-            maxOutputTokens: 300, // Limit response length
+            maxOutputTokens: 300,
             temperature: 0.7,
-            topP: 0.8,
-            topK: 40
-          },
-          safetySettings: [
-            {
-              category: 'HARM_CATEGORY_HARASSMENT',
-              threshold: 'BLOCK_MEDIUM_AND_ABOVE'
-            },
-            {
-              category: 'HARM_CATEGORY_HATE_SPEECH',
-              threshold: 'BLOCK_MEDIUM_AND_ABOVE'
-            },
-            {
-              category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-              threshold: 'BLOCK_MEDIUM_AND_ABOVE'
-            },
-            {
-              category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
-              threshold: 'BLOCK_MEDIUM_AND_ABOVE'
-            }
-          ]
+          }
         });
 
-        // Create secure prompt
-        const prompt = `${SYSTEM_PROMPT}\n\nUser: ${sanitizedMessage}`;
+        // Create the prompt with system instructions and user message
+        const prompt = `${SYSTEM_PROMPT}\n\nUser: ${userMessage}`;
 
-        // Generate response with timeout
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
-        
+        // Generate response
         const result = await model.generateContent(prompt);
-        clearTimeout(timeoutId);
-        
         const response = await result.response;
         const reply = response.text();
 
-        // Security: Validate and clean response
-        if (!reply || typeof reply !== 'string') {
-          throw new Error('Invalid response from AI');
-        }
-
-        // Clean and sanitize the response
+        // Clean up the response (remove any accidental markdown or formatting)
         const cleanReply = reply
           .replace(/\*\*/g, '')
           .replace(/\*/g, '')
@@ -230,13 +118,7 @@ export async function getRealGeminiResponse(userMessage) {
           .replace(/`/g, '')
           .replace(/\n{2,}/g, ' ')
           .replace(/\n/g, ' ')
-          .replace(/[<>\"'&]/g, '') // Remove potentially harmful characters
-          .trim()
-          .substring(0, 500); // Limit response length
-
-        if (!cleanReply) {
-          throw new Error('Empty response from AI');
-        }
+          .trim();
 
         return cleanReply;
 
@@ -245,6 +127,7 @@ export async function getRealGeminiResponse(userMessage) {
         if (i === apiKeys.length - 1) {
           throw keyError;
         }
+        
         // Otherwise, continue to next key
         continue;
       }
@@ -253,28 +136,31 @@ export async function getRealGeminiResponse(userMessage) {
     throw new Error('All API keys failed');
 
   } catch (error) {
-    // Security: Don't expose internal error details
-    const errorMessage = error.message || 'An error occurred';
+    console.error('❌ Gemini AI Error:', error);
     
-    if (errorMessage.includes('rate limit') || errorMessage.includes('quota')) {
-      throw new Error('Service temporarily unavailable. Please try again later.');
+    // Handle specific error types
+    if (error.message?.includes('API_KEY') || error.message?.includes('Invalid API key')) {
+      throw new Error('All API keys are invalid. Please check the key service.');
     }
     
-    if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
-      throw new Error('Network error. Please check your connection.');
+    if (error.message?.includes('quota') || error.message?.includes('QUOTA_EXCEEDED')) {
+      throw new Error('API quota exceeded on all keys. Please try again later.');
     }
     
-    if (errorMessage.includes('Invalid API key') || errorMessage.includes('API_KEY')) {
-      throw new Error('Service configuration error. Please try again later.');
+    if (error.message?.includes('network') || error.message?.includes('fetch')) {
+      throw new Error('Network error. Please check your internet connection.');
     }
     
-    throw new Error('Unable to process request. Please try again.');
+    if (error.message?.includes('fetch API keys')) {
+      throw new Error('Unable to get API keys. Please try again later.');
+    }
+    
+    throw new Error('Failed to get AI response. Please try again.');
   }
 }
 
-// Secure function to clear cache
+// Function to manually refresh API keys cache
 export function refreshApiKeys() {
   cachedApiKeys = null;
   lastFetchTime = 0;
-  lastRequestTime = 0;
 }
